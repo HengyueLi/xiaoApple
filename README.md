@@ -21,7 +21,7 @@ aliDir = 'syncdir'
 apple = xiaoApple.Sync(localDir,aliDir)
 
 
-# 单次同步
+# 单次同步。如果文件很多，第一次很慢...
 apple.run()
 
 

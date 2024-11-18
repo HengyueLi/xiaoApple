@@ -4,7 +4,7 @@ from aligo import Aligo
 import datetime 
 import logging
 import os 
-from pathlib import Path
+from pathlib import Path,PurePosixPath
 from collections import defaultdict
 
 
@@ -65,7 +65,12 @@ class Aliyunpan(baseBackend):
             self.prefix = self.dirPath + "/" 
         self.ali = _AligoWithDelete()
         self.idPath = {"":'root'}
+        self._UploadQueue = {}
+        self._DownloadQueue = {}
         self._setDirPathID(self.dirPath) 
+
+    def __del__(self):
+        self.cleanQueue() 
 
     def _setDirPathID(self,absPath): 
         if absPath in self.idPath:return  
@@ -187,6 +192,28 @@ class Aliyunpan(baseBackend):
         """     
         fdir,name = self._absPath_dir_name(rPathRemote)
         self.ali.upload_file(file_path=localPath,parent_file_id=self.idPath[fdir],name=name,check_name_mode='overwrite')
+    # def putFile(self,localPath:str,rPathRemote:str): 
+    #     """a local file <localPath> is uploading to the remote at be <rPathRemote>
+    #     remember to keep the meta-data
+
+    #     Args:
+    #         localPath (str): abs-path of a local path
+    #         rPathRemote (str): relative path of a remote place 
+    #     """     
+    #     fdir,name = self._absPath_dir_name(rPathRemote)
+    #     dirID = self.idPath.get(fdir,None) 
+    #     if dirID is None:
+    #         pass 
+    #     else:
+    #         l = self._UploadQueue.get(dirID,None)
+    #         if l is None:
+    #             self._UploadQueue[dirID] = [] 
+    #             l = self._UploadQueue[dirID]       
+    #         l.append( ( localPath , name )    )
+
+
+
+
 
     def getFile(self,rPathRemote:str,localPath:str)->int: 
         """download a remote file <rPathRemote> to be local file <localPath> 
@@ -242,7 +269,7 @@ class Aliyunpan(baseBackend):
         directory_dict = defaultdict(list)
 
         for src, dst in pairs:
-            dst_path = Path(dst) 
+            dst_path = PurePosixPath(dst) 
             directory = dst_path.parent  #
             directory_dict[str(directory)].append((src, dst))  
 
@@ -296,7 +323,7 @@ class Aliyunpan(baseBackend):
         directory_dict = defaultdict(list)
 
         for src, dst in pairs:
-            dst_path = Path(dst) 
+            dst_path = PurePosixPath(dst) 
             directory = dst_path.parent  #
             directory_dict[str(directory)].append((src, dst))  
 
@@ -335,3 +362,13 @@ class Aliyunpan(baseBackend):
         self.ali.batch_delete_files(file_id_list=fids)  
         return 0 
 
+
+    def cleanQueue(self):
+        """ OPTIONAL IMPLEMENTATION
+        In some cases, to seedup download/upload, you can put missions into a queue to avoid real actions.
+        However, if this method is called, you must finish all waiting missions. 
+        """
+        # for fid,missions in self._UploadQueue.items():
+        #     paths = [ m[0] for m in missions]
+        #     names = [ m[1] for m in missions]
+        #     # self.ali.upload_files(file_paths= )
