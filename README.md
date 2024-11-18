@@ -25,8 +25,18 @@ apple = xiaoApple.Sync(localDir,aliDir)
 apple.run()
 
 
-# # 自动间隔120秒同步一次
-# apple.auto(syncCycleSec=120) 
+# # 自动间隔720秒同步一次
+# apple.auto(syncCycleSec=720) 
+
+
+# # 列出最近的删除备份，可用于恢复数据
+#  print(apple.listDelteBackups())
+
+
+# # 根据listDelteBackups得到的列表，可以根据备份恢复删除的文件
+# apple.recoverBackup('2024-11-12T082104')
+
+
 
 ```
 

@@ -63,7 +63,7 @@ class Aliyunpan(baseBackend):
             self.prefix = "" 
         else:
             self.prefix = self.dirPath + "/" 
-        self.ali = _AligoWithDelete()
+        self.ali = _AligoWithDelete(level=logging.ERROR)
         self.idPath = {"":'root'}
         self._UploadQueue = {}
         self._DownloadQueue = {}
@@ -93,7 +93,7 @@ class Aliyunpan(baseBackend):
         Returns:
             str: _description_
         """        
-        return "aliyunpan" + self.dirPath
+        return "aliyunpan:" + self.dirPath
     
     def _geValidPath(self,path):
         if path in ("","."):
