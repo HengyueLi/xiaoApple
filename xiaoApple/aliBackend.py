@@ -100,6 +100,30 @@ class Aliyunpan(baseBackend):
             return self.dirPath
         else:
             return   self.prefix + "/".join([s for s in path.split("/") if len(s) > 0]) 
+        
+    def _getfileIDByRpath(self,rpath):
+        if rpath in ("","."):
+            absPath = self.dirPath 
+        else:
+            absPath = self.prefix + rpath 
+        pid = self.idPath.get(absPath,None) 
+        if pid is not None:
+            return pid 
+        name = os.path.basename(absPath)
+        absPath = PurePosixPath(absPath) 
+        fdir = absPath.parent 
+        relfdir = str(fdir.relative_to(self.dirPath).as_posix())
+        pid_fdir = self._getfileIDByRpath(relfdir) 
+        if pid_fdir == -1:
+            return -1 
+        files = self.ali.get_file_list(parent_file_id=pid_fdir)
+        for f in files:
+            if f.name == name:
+                return f.file_id
+        logging.error(f"cannot find file [{name}] inside [{relfdir}]") 
+        return -1
+
+
     
     def _absPath_dir_name(self,rpath):
         p = self.prefix + rpath
@@ -129,10 +153,18 @@ class Aliyunpan(baseBackend):
             pid = 'root'
             prefix = ''
         else:
-            pid = self.idPath.get(abspath,None) 
+            # pid = self.idPath.get(abspath,None) 
+            # if pid is None:
+            #     self._setDirPathID(abspath) 
+            # pid = self.idPath.get(abspath,None)
+            absPathObj = PurePosixPath(abspath) 
+            dirPathObj = PurePosixPath(self.dirPath) 
+            rpath = absPathObj.relative_to(dirPathObj).as_posix()
+            rpath = '' if rpath == "." else rpath 
+            # rpath = os.path.relpath(abspath, self.dirPath)
+            pid = self._getfileIDByRpath(rpath) 
             if pid is None:
-                self._setDirPathID(abspath) 
-            pid = self.idPath.get(abspath,None)
+                logging.error(f"cannot find fileid of [{rpath}] in cache") 
             prefix = abspath+'/'
         files = self.ali.get_file_list(parent_file_id=pid)
         res = []
@@ -163,18 +195,18 @@ class Aliyunpan(baseBackend):
             int: error code, =0 for success
         """   
         fdir,name = self._absPath_dir_name(rpath=rpath) 
-        parentid = self.idPath[fdir]
+        parentid = self.idPath[fdir] 
         res = self.ali.create_folder(parent_file_id=parentid,name= name ,check_name_mode='refuse' )
         self.idPath[self._geValidPath(rpath)] = res.file_id
         return 0 
     
     def purge(self, rPathRemote):
-        absPath = self._geValidPath(rPathRemote)
-        if absPath not in self.idPath:
+        f_id = self._getfileIDByRpath(rPathRemote)
+        if f_id == -1:
             logging.error(f"cannot delete resource {rPathRemote}, idPath cannot find it")
             return -1 
         else:
-            self.ali.delete_file(file_id=self.idPath[absPath]) 
+            self.ali.delete_file(file_id=f_id) 
             return 0 
     
     rmdir = purge
@@ -189,29 +221,14 @@ class Aliyunpan(baseBackend):
         Args:
             localPath (str): abs-path of a local path
             rPathRemote (str): relative path of a remote place 
-        """     
+        """    
+        rel_fdir = PurePosixPath(rPathRemote).parent.as_posix()
+        rel_fdir = '' if rel_fdir == '.' else rel_fdir 
         fdir,name = self._absPath_dir_name(rPathRemote)
-        self.ali.upload_file(file_path=localPath,parent_file_id=self.idPath[fdir],name=name,check_name_mode='overwrite')
-    # def putFile(self,localPath:str,rPathRemote:str): 
-    #     """a local file <localPath> is uploading to the remote at be <rPathRemote>
-    #     remember to keep the meta-data
-
-    #     Args:
-    #         localPath (str): abs-path of a local path
-    #         rPathRemote (str): relative path of a remote place 
-    #     """     
-    #     fdir,name = self._absPath_dir_name(rPathRemote)
-    #     dirID = self.idPath.get(fdir,None) 
-    #     if dirID is None:
-    #         pass 
-    #     else:
-    #         l = self._UploadQueue.get(dirID,None)
-    #         if l is None:
-    #             self._UploadQueue[dirID] = [] 
-    #             l = self._UploadQueue[dirID]       
-    #         l.append( ( localPath , name )    )
-
-
+        fdir_fsid = self._getfileIDByRpath(rel_fdir)
+        res = self.ali.upload_file(file_path=localPath,parent_file_id=fdir_fsid,name=name,check_name_mode='overwrite')
+        absPath = self._geValidPath(rPathRemote)
+        self.idPath[absPath] = res.file_id
 
 
 
@@ -225,12 +242,12 @@ class Aliyunpan(baseBackend):
         Returns:
             int: 0 -> success,  -1 -> file not exist
         """   
-        absPath = self._geValidPath(rPathRemote)
-        if absPath not in self.idPath:
-            logging.error(f"downloading file {rPathRemote} (abspath = {absPath}) not in idPath")
+        pid = self._getfileIDByRpath(rPathRemote)
+        if pid == -1:
+            logging.error(f"downloading file {rPathRemote} not found")
             return -1 
         dlDir = os.path.dirname(localPath)
-        downloadedPath = self.ali.download_file(file_id=self.idPath[absPath],local_folder=dlDir) 
+        downloadedPath = self.ali.download_file(file_id=pid,local_folder=dlDir) 
         os.rename(downloadedPath,localPath)
         return 0 
 
@@ -245,13 +262,17 @@ class Aliyunpan(baseBackend):
         Returns:
             int: error code, 0
         """    
-        srcid = self.idPath.get(self._geValidPath(rPathSrc),None) 
-        if srcid is None:
+        # srcid = self.idPath.get(self._geValidPath(rPathSrc),None) 
+        srcid = self._getfileIDByRpath(rPathSrc)
+        if srcid == -1:
             logging.error(f'remoteMove: fid of {rPathSrc} not found')
             return -1 
-        fdir,name = self._absPath_dir_name(rPathDst)
-        dstid = self.idPath.get(fdir,None)  
-        if dstid is None:
+        dstObj = PurePosixPath(rPathDst)
+        name = dstObj.name 
+        fdir = dstObj.parent.as_posix()
+        fdir = '' if fdir =='.' else fdir
+        dstid = self._getfileIDByRpath(fdir)
+        if dstid == -1:
             logging.error(f"remoteMove: fid of dst dir {fdir} not found")  
         self.ali.move_file(file_id=srcid,to_parent_file_id=dstid,new_name=name) 
         return 0
@@ -270,19 +291,20 @@ class Aliyunpan(baseBackend):
 
         for src, dst in pairs:
             dst_path = PurePosixPath(dst) 
-            directory = dst_path.parent  #
+            directory = dst_path.parent.as_posix() 
+            directory = '' if directory =='.' else directory
             directory_dict[str(directory)].append((src, dst))  
 
         for dir_path, files in directory_dict.items():
             fids = []
             for src, dst in files:
-                srcid = self.idPath.get(self._geValidPath(src),None) 
-                if srcid is None:
+                srcid = self._getfileIDByRpath(src) 
+                if srcid == -1:
                     logging.error(f"{src} not in idPath, why?")
                 else:
                     fids.append(srcid)
-            dstid = self.idPath.get(self._geValidPath(dir_path),None)  
-            if dstid is None:
+            dstid = self._getfileIDByRpath(dir_path)   
+            if dstid == -1:
                 logging.error(f"remoteBatchMove: fid of dst dir {dir_path} not found")  
             else:
                 self.ali.batch_move_files(file_id_list=fids,to_parent_file_id=dstid) 
@@ -324,20 +346,21 @@ class Aliyunpan(baseBackend):
 
         for src, dst in pairs:
             dst_path = PurePosixPath(dst) 
-            directory = dst_path.parent  #
+            directory = dst_path.parent.as_posix() 
+            directory = '' if directory =='.' else directory
             directory_dict[str(directory)].append((src, dst))  
 
         for dir_path, files in directory_dict.items():
             fids = []
             for src, dst in files:
-                srcid = self.idPath.get(self._geValidPath(src),None) 
-                if srcid is None:
+                srcid = self._getfileIDByRpath(src) 
+                if srcid == -1:
                     logging.error(f"{src} not in idPath, why?")
                 else:
                     fids.append(srcid)
-            dstid = self.idPath.get(self._geValidPath(dir_path),None)  
-            if dstid is None:
-                logging.error(f"remoteBatchCopy: fid of dst dir {dir_path} not found")  
+            dstid = self._getfileIDByRpath(dir_path)   
+            if dstid == -1:
+                logging.error(f"remoteBatchMove: fid of dst dir {dir_path} not found")  
             else:
                 self.ali.batch_copy_files(file_id_list=fids,to_parent_file_id=dstid) 
         return 0 
@@ -354,8 +377,8 @@ class Aliyunpan(baseBackend):
         """       
         fids = []
         for item in items:
-            srcid = self.idPath.get(self._geValidPath(item),None) 
-            if srcid is None:
+            srcid = self._getfileIDByRpath(item) 
+            if srcid == -1:
                 logging.error(f"remoteBatchDelete: fid of item {item} not found")
             else:
                 fids.append(srcid)
