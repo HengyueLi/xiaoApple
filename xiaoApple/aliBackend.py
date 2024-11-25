@@ -113,6 +113,7 @@ class Aliyunpan(baseBackend):
         absPath = PurePosixPath(absPath) 
         fdir = absPath.parent 
         relfdir = str(fdir.relative_to(self.dirPath).as_posix())
+        relfdir = '' if relfdir == '.' else relfdir
         pid_fdir = self._getfileIDByRpath(relfdir) 
         if pid_fdir == -1:
             return -1 
@@ -194,8 +195,13 @@ class Aliyunpan(baseBackend):
         Returns:
             int: error code, =0 for success
         """   
-        fdir,name = self._absPath_dir_name(rpath=rpath) 
-        parentid = self.idPath[fdir] 
+        rpathObj = PurePosixPath(rpath) 
+        name = rpathObj.name 
+        fdir = rpathObj.parent.as_posix() 
+        fdir = '' if fdir == '.' else fdir
+        parentid = self._getfileIDByRpath(fdir) 
+        if parentid == -1:
+            logging.error(f"cannot find {fdir} in idPath")  
         res = self.ali.create_folder(parent_file_id=parentid,name= name ,check_name_mode='refuse' )
         self.idPath[self._geValidPath(rpath)] = res.file_id
         return 0 
@@ -321,13 +327,18 @@ class Aliyunpan(baseBackend):
         Returns:
             int: error code, 0
         """        
-        srcid = self.idPath.get(self._geValidPath(rPathSrc),None) 
-        if srcid is None:
+        # srcid = self.idPath.get(self._geValidPath(rPathSrc),None) 
+        srcid = self._getfileIDByRpath(rPathSrc) 
+        if srcid == -1:
             logging.error(f'remoteMove: fid of {rPathSrc} not found')
             return -1 
-        fdir,name = self._absPath_dir_name(rPathDst)
-        dstid = self.idPath.get(fdir,None)  
-        if dstid is None:
+        dstPathObj = PurePosixPath(rPathDst) 
+        name = dstPathObj.name 
+        fdir = dstPathObj.parent.as_posix() 
+        fdir = '' if fdir == '.' else fdir  
+        # fdir,name = self._absPath_dir_name(rPathDst)
+        dstid = self._getfileIDByRpath(fdir) 
+        if dstid == -1:
             logging.error(f"remoteMove: fid of dst dir {fdir} not found")  
         self.ali.copy_file(file_id=srcid,to_parent_file_id=dstid,new_name=name) 
         return 0

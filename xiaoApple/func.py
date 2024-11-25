@@ -5,6 +5,8 @@ import time
 import hashlib
 from tinysync.backendMethods import BackendHandler
 from .copyfiles import copy_missing_files
+import logging
+
 
 
 class Sync():
@@ -22,7 +24,14 @@ class Sync():
     def run(self):
         if not os.path.exists(self.localDir):
             raise Exception(f"本地文件夹{self.localDir}不存在")
-        tinysync.syncronization(self.localBackend,self.aliyunBackend,Config=self.syncConfig)  
+        error = tinysync.syncronization(self.localBackend,self.aliyunBackend,Config=self.syncConfig)  
+        if error == -1:
+            logging.error("local side is locked") 
+        elif error == -2:
+            logging.error("Aliyunpan-side is locked") 
+        else:
+            logging.info("finished!")
+
 
     def auto(self,syncCycleSec=120):
         while True:
