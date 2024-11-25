@@ -1,2 +1,2 @@
-tinysync
+tinysync>=0.0.13
 aligo
