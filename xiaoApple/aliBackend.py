@@ -201,8 +201,11 @@ class Aliyunpan(baseBackend):
         fdir = '' if fdir == '.' else fdir
         parentid = self._getfileIDByRpath(fdir) 
         if parentid == -1:
-            logging.error(f"cannot find {fdir} in idPath")  
+            logging.error(f"cannot find {fdir} in idPath") 
+        # print(f"@mkdir:[{rpath}]") 
         res = self.ali.create_folder(parent_file_id=parentid,name= name ,check_name_mode='refuse' )
+        # print("@mkdir,res=",res)
+        # print("dir(res)=",dir(res)) 
         self.idPath[self._geValidPath(rpath)] = res.file_id
         return 0 
     
